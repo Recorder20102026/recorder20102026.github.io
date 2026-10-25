@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Recorder 25th Oct</title>
+<meta name="description" content="A simple in-browser voice recorder. Record, play back and download audio. Nothing is uploaded.">
+<meta name="theme-color" content="#2338F0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%232338F0'/%3E%3Ccircle cx='50' cy='50' r='22' fill='%23FF5C8A'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --cobalt: #2338F0;
+    --ink: #0B1246;
+    --ink-2: #141D63;
+    --paper: #F2F0FF;
+    --paper-dim: #B9BDF5;
+    --pink: #FF5C8A;
+    --line: rgba(242, 240, 255, .18);
+    --display: "Arial Black", "Helvetica Neue", Impact, system-ui, sans-serif;
+    --body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--cobalt);
+    color: var(--paper);
+    font-family: var(--body);
+    line-height: 1.55;
+    padding: max(24px, env(safe-area-inset-top)) 20px max(32px, env(safe-area-inset-bottom));
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header { padding: 28px 0 36px; }
+  h1 {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(3rem, 12vw, 7.5rem);
+    line-height: .92;
+    letter-spacing: -.045em;
+    margin: 0;
+    max-width: 8ch;
+    animation: rise .9s cubic-bezier(.2, .8, .2, 1) both;
+  }
+  .lede { max-width: 46ch; margin: 22px 0 0; color: var(--paper-dim); font-size: 1.05rem; }
+
+  .deck {
+    background: var(--ink);
+    border-radius: 32px;
+    padding: clamp(18px, 4vw, 36px);
+    box-shadow: 0 30px 60px -30px rgba(5, 8, 40, .8);
+  }
+  canvas { display: block; width: 100%; height: 150px; }
+  .controls { display: flex; align-items: center; gap: 22px; margin-top: 18px; flex-wrap: wrap; }
+
+  #rec {
+    appearance: none; border: 0; cursor: pointer;
+    width: 84px; height: 84px; border-radius: 50%;
+    background: var(--paper);
+    display: grid; place-items: center;
+    transition: transform .15s ease, background .2s ease;
+    flex: none;
+  }
+  #rec:hover { transform: scale(1.05); }
+  #rec:active { transform: scale(.96); }
+  #rec .dot { width: 34px; height: 34px; border-radius: 50%; background: var(--pink); transition: border-radius .2s ease, transform .2s ease; }
+  #rec[aria-pressed="true"] .dot { border-radius: 8px; transform: scale(.78); }
+  #rec[aria-pressed="true"] { animation: pulse 1.6s ease-out infinite; }
+  :focus-visible { outline: 3px solid var(--pink); outline-offset: 4px; }
+
+  .readout { display: flex; flex-direction: column; gap: 2px; }
+  #timer { font-family: var(--mono); font-size: clamp(2rem, 7vw, 2.8rem); font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1.1; }
+  #status { color: var(--paper-dim); font-size: .95rem; min-height: 1.5em; }
+  #status.error { color: var(--pink); }
+
+  section { margin-top: 56px; }
+  h2 { font-family: var(--display); font-size: 1.6rem; letter-spacing: -.02em; margin: 0 0 8px; }
+  .empty { color: var(--paper-dim); margin: 0; padding: 20px 0; border-top: 1px solid var(--line); }
+  ul, ol { list-style: none; margin: 0; padding: 0; }
+  li { display: grid; grid-template-columns: 1fr auto; gap: 10px 16px; align-items: center; padding: 18px 0; border-top: 1px solid var(--line); animation: drop .4s ease both; }
+  li:last-child { border-bottom: 1px solid var(--line); }
+  .meta { display: flex; flex-direction: column; }
+  .meta strong { font-weight: 700; }
+  .meta span { color: var(--paper-dim); font-size: .88rem; font-family: var(--mono); }
+  .actions { display: flex; gap: 10px; }
+  .btn {
+    appearance: none; cursor: pointer; text-decoration: none;
+    font: inherit; font-size: .9rem; font-weight: 600;
+    color: var(--paper); background: transparent;
+    border: 1.5px solid var(--paper-dim); border-radius: 999px;
+    padding: 7px 16px; transition: background .15s ease, color .15s ease;
+  }
+  .btn:hover { background: var(--paper); color: var(--ink); }
+  li audio { grid-column: 1 / -1; width: 100%; height: 40px; }
+
+  html { scroll-behavior: smooth; }
+  section[id] { scroll-margin-top: 24px; }
+  .sub { color: var(--paper-dim); max-width: 52ch; margin: 0 0 26px; }
+
+  nav { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 6px 0; }
+  .brand { font-family: var(--display); font-size: 1.05rem; letter-spacing: -.02em; color: var(--paper); text-decoration: none; }
+  nav ul { display: flex; gap: 6px; flex-wrap: wrap; }
+  nav li { display: block; padding: 0; border: 0; animation: none; }
+  nav li:last-child { border: 0; }
+  nav li a { color: var(--paper); text-decoration: none; font-size: .92rem; font-weight: 600; padding: 7px 14px; border-radius: 999px; transition: background .15s ease, color .15s ease; display: inline-block; }
+  nav li a:hover { background: var(--paper); color: var(--ink); }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; counter-reset: step; }
+  .steps li { display: block; padding: 18px 0 0; border-top: 2px solid var(--paper); animation: none; counter-increment: step; }
+  .steps li:last-child { border-bottom: 0; }
+  .steps li::before { content: counter(step); font-family: var(--display); font-size: 2.4rem; letter-spacing: -.04em; line-height: 1; display: block; margin-bottom: 10px; color: var(--pink); }
+  .steps h3, .features h3 { font-size: 1.1rem; margin: 0 0 6px; }
+  .steps p, .features p { margin: 0; color: var(--paper-dim); font-size: .97rem; }
+
+  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 40px; }
+  .features li { display: block; animation: none; padding: 20px 0; }
+  .features li:nth-last-child(-n+2) { border-bottom: 1px solid var(--line); }
+
+  .faq { border-top: 1px solid var(--line); }
+  details { border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 0; font-weight: 700; font-size: 1.05rem; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; flex: none; width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--paper-dim); display: grid; place-items: center; font-size: 1.25rem; font-weight: 400; transition: transform .25s ease, background .2s ease, color .2s ease; }
+  details[open] summary::after { transform: rotate(45deg); background: var(--paper); color: var(--ink); border-color: var(--paper); }
+  details p { margin: 0 0 20px; color: var(--paper-dim); max-width: 62ch; }
+
+  .contact { display: grid; grid-template-columns: 1fr 1.2fr; gap: clamp(24px, 5vw, 56px); background: var(--ink); border-radius: 32px; padding: clamp(22px, 5vw, 44px); }
+  .contact h2 { margin-bottom: 10px; }
+  .details { margin: 26px 0 0; display: grid; gap: 16px; }
+  .details dt { color: var(--paper-dim); font-size: .85rem; }
+  .details dd { margin: 0; font-weight: 600; }
+  .details a { color: var(--paper); text-decoration-color: var(--pink); text-underline-offset: 4px; }
+  .details a:hover { color: var(--pink); }
+  form { display: grid; gap: 14px; align-content: start; }
+  label { display: grid; gap: 6px; font-size: .9rem; font-weight: 600; }
+  input, select, textarea { font: inherit; color: var(--paper); background: var(--ink-2); border: 1.5px solid transparent; border-radius: 14px; padding: 12px 14px; width: 100%; }
+  select { appearance: none; -webkit-appearance: none; cursor: pointer; background-image: linear-gradient(45deg, transparent 50%, var(--paper) 50%), linear-gradient(135deg, var(--paper) 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 40px; }
+  select option { color: #111; background: #fff; }
+  textarea { min-height: 120px; resize: vertical; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--pink); }
+  .send { justify-self: start; background: var(--pink); color: var(--ink); border: 0; font-weight: 800; padding: 13px 26px; }
+  .send:hover { background: var(--paper); }
+  #formNote { color: var(--paper-dim); font-size: .9rem; min-height: 1.4em; margin: 0; }
+
+  footer { margin-top: 64px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--paper-dim); font-size: .88rem; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  footer a { color: var(--paper); text-underline-offset: 4px; }
+  @media (max-width: 720px) { .steps, .features, .contact { grid-template-columns: 1fr; } .features li:nth-last-child(2) { border-bottom: 0; } .features li:last-child { border-bottom: 1px solid var(--line); } }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+  @keyframes drop { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 92, 138, .6); } 100% { box-shadow: 0 0 0 22px rgba(255, 92, 138, 0); } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+  @media (max-width: 480px) { li { grid-template-columns: 1fr; } canvas { height: 110px; } }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <nav aria-label="Main">
+    <a class="brand" href="#top">Recorder 25th Oct</a>
+    <ul>
+      <li><a href="#takes">Recordings</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#faq">FAQ</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+  </nav>
+
+  <header id="top">
+    <h1>Recorder 25th Oct</h1>
+    <p class="lede">Press the button, talk, press it again. Your recording stays in this browser until you download it.</p>
+  </header>
+
+  <div class="deck">
+    <canvas id="wave" aria-hidden="true"></canvas>
+    <div class="controls">
+      <button id="rec" type="button" aria-pressed="false" aria-label="Start recording"><span class="dot"></span></button>
+      <div class="readout">
+        <div id="timer" aria-live="off">00:00</div>
+        <div id="status" role="status">Ready. Microphone access is requested when you start.</div>
+      </div>
+    </div>
+  </div>
+
+  <section aria-labelledby="takes">
+    <h2 id="takes">Your recordings</h2>
+    <p class="empty" id="empty">Nothing recorded yet. Your takes will appear here.</p>
+    <ul id="list"></ul>
+  </section>
+
+  <section id="how" aria-labelledby="how-h">
+    <h2 id="how-h">How it works</h2>
+    <p class="sub">Three steps, no account and no install.</p>
+    <ol class="steps">
+      <li><h3>Allow the microphone</h3><p>Your browser asks once. You can change this any time in site settings.</p></li>
+      <li><h3>Record your take</h3><p>Press the pink button to start and again to stop. The timer shows the length.</p></li>
+      <li><h3>Play or download</h3><p>Listen back straight away, then save the file to your device.</p></li>
+    </ol>
+  </section>
+
+  <section id="features" aria-labelledby="feat-h">
+    <h2 id="feat-h">What you get</h2>
+    <p class="sub">A small tool that does one job and stays out of the way.</p>
+    <ul class="features">
+      <li><h3>Private by design</h3><p>Audio never leaves your device. There is no server and no tracking.</p></li>
+      <li><h3>Live waveform</h3><p>See your voice as you speak, so you know the microphone is working.</p></li>
+      <li><h3>Works on any device</h3><p>Phone, tablet or laptop, in current Chrome, Edge, Firefox and Safari.</p></li>
+      <li><h3>Keep several takes</h3><p>Record as many times as you like and download only the ones you want.</p></li>
+    </ul>
+  </section>
+
+  <section id="faq" aria-labelledby="faq-h">
+    <h2 id="faq-h">Questions</h2>
+    <p class="sub">Quick answers. Select a question to open it.</p>
+    <div class="faq">
+      <details>
+        <summary>Where are my recordings stored?</summary>
+        <p>Only in your browser’s memory while the page is open. Nothing is uploaded. Download a take to keep it, because refreshing the page clears the list.</p>
+      </details>
+      <details>
+        <summary>Why does the browser ask for microphone access?</summary>
+        <p>Recording needs the microphone. The permission is requested only when you press the record button for the first time.</p>
+      </details>
+      <details>
+        <summary>The microphone is blocked. How do I fix it?</summary>
+        <p>Click the lock or settings icon next to the address bar, set Microphone to Allow, then reload the page and try again.</p>
+      </details>
+      <details>
+        <summary>What file format do I get?</summary>
+        <p>It depends on your browser. Chrome, Edge and Firefox save WebM or OGG, and Safari saves M4A. All of them play in most players, including VLC.</p>
+      </details>
+      <details>
+        <summary>Is there a recording length limit?</summary>
+        <p>The page sets no limit. Long takes use more memory, so download and delete older ones if you record for a long time.</p>
+      </details>
+    </div>
+  </section>
+
+  <section id="contact" aria-labelledby="contact-h">
+    <div class="contact">
+      <div>
+        <h2 id="contact-h">Get in touch</h2>
+        <p class="sub" style="margin:0">Found a bug or have an idea? Send a message and you’ll get a reply within two working days.</p>
+        <dl class="details">
+          <div><dt>Email</dt><dd><a href="mailto:hello@example.com">hello@example.com</a></dd></div>
+          <div><dt>Phone</dt><dd><a href="tel:+910000000000">+91 00000 00000</a></dd></div>
+          <div><dt>Location</dt><dd>Jodhpur, Rajasthan, India</dd></div>
+          <div><dt>Hours</dt><dd>Mon to Fri, 10:00 to 18:00 IST</dd></div>
+          <div><dt>Elsewhere</dt><dd><a href="https://github.com/" rel="noopener">GitHub</a>, <a href="https://www.linkedin.com/" rel="noopener">LinkedIn</a></dd></div>
+        </dl>
+      </div>
+      <form id="contactForm" novalidate>
+        <label>Your name<input id="cName" name="name" type="text" autocomplete="name" required></label>
+        <label>Your email<input id="cEmail" name="email" type="email" autocomplete="email" required></label>
+        <label>Topic
+          <select id="cTopic" name="topic">
+            <option>General question</option>
+            <option>Report a problem</option>
+            <option>Suggest a feature</option>
+            <option>Say hello</option>
+          </select>
+        </label>
+        <label>Message<textarea id="cMsg" name="message" required></textarea></label>
+        <button class="btn send" type="submit">Send message</button>
+        <p id="formNote" role="status">This opens your email app with the message filled in.</p>
+      </form>
+    </div>
+  </section>
+
+  <footer>
+    <span>Recordings are never uploaded. Refreshing the page clears any you haven’t downloaded.</span>
+    <span><a href="#top">Back to top</a></span>
+  </footer>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var recBtn = document.getElementById('rec');
+  var timerEl = document.getElementById('timer');
+  var statusEl = document.getElementById('status');
+  var listEl = document.getElementById('list');
+  var emptyEl = document.getElementById('empty');
+  var canvas = document.getElementById('wave');
+  var ctx = canvas.getContext('2d');
+
+  var recorder = null, stream = null, chunks = [], audioCtx = null, analyser = null, data = null;
+  var startedAt = 0, tick = null, count = 0, mime = '';
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function setStatus(msg, isError) { statusEl.textContent = msg; statusEl.className = isError ? 'error' : ''; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function fmt(s) { return pad(Math.floor(s / 60)) + ':' + pad(Math.floor(s % 60)); }
+
+  function pickMime() {
+    if (!window.MediaRecorder) return null;
+    var types = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus'];
+    for (var i = 0; i < types.length; i++) {
+      if (MediaRecorder.isTypeSupported(types[i])) return types[i];
+    }
+    return '';
+  }
+  function extFor(m) { return /mp4/.test(m) ? 'm4a' : /ogg/.test(m) ? 'ogg' : 'webm'; }
+
+  /* ---------- waveform ---------- */
+  function resize() {
+    var dpr = window.devicePixelRatio || 1, r = canvas.getBoundingClientRect();
+    canvas.width = Math.round(r.width * dpr);
+    canvas.height = Math.round(r.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function draw(t) {
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+    var bars = Math.max(24, Math.floor(w / 12)), gap = w / bars, mid = h / 2;
+    if (analyser) analyser.getByteFrequencyData(data);
+    for (var i = 0; i < bars; i++) {
+      var amp;
+      if (analyser) {
+        var idx = Math.floor(Math.pow(i / bars, 1.5) * data.length * 0.6);
+        amp = data[idx] / 255;
+      } else {
+        amp = reduce ? 0.04 : 0.04 + 0.03 * Math.sin(t / 700 + i * 0.5);
+      }
+      var bh = Math.max(4, amp * h * 0.95);
+      ctx.fillStyle = analyser ? '#FF5C8A' : 'rgba(185,189,245,.55)';
+      var x = i * gap + gap * 0.2, bw = gap * 0.6, rad = bw / 2;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x, mid - bh / 2, bw, bh, rad); else ctx.rect(x, mid - bh / 2, bw, bh);
+      ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(draw);
+
+  /* ---------- recording ---------- */
+  async function start() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      setStatus('This browser can’t record audio. Try a current version of Chrome, Edge, Firefox or Safari.', true);
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      var denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+      setStatus(denied ? 'Microphone blocked. Allow access in your browser’s site settings, then try again.'
+                       : 'No microphone found. Connect one and try again.', true);
+      return;
+    }
+    mime = pickMime();
+    try {
+      recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch (e) {
+      recorder = new MediaRecorder(stream);
+    }
+    mime = recorder.mimeType || mime || 'audio/webm';
+    chunks = [];
+    recorder.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = finish;
+    recorder.start();
+
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.75;
+      data = new Uint8Array(analyser.frequencyBinCount);
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+    } catch (e) { analyser = null; }
+
+    startedAt = Date.now();
+    tick = setInterval(function () { timerEl.textContent = fmt((Date.now() - startedAt) / 1000); }, 250);
+    recBtn.setAttribute('aria-pressed', 'true');
+    recBtn.setAttribute('aria-label', 'Stop recording');
+    setStatus('Recording. Press the button to stop.');
+  }
+
+  function stop() {
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    clearInterval(tick);
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    if (audioCtx) audioCtx.close();
+    analyser = null; audioCtx = null;
+    recBtn.setAttribute('aria-pressed', 'false');
+    recBtn.setAttribute('aria-label', 'Start recording');
+  }
+
+  function finish() {
+    var seconds = (Date.now() - startedAt) / 1000;
+    if (!chunks.length) { setStatus('Nothing was captured. Try again.', true); return; }
+    var blob = new Blob(chunks, { type: mime });
+    var url = URL.createObjectURL(blob);
+    count++;
+    var name = 'Recording ' + count;
+    var li = document.createElement('li');
+
+    var meta = document.createElement('div'); meta.className = 'meta';
+    var strong = document.createElement('strong'); strong.textContent = name;
+    var info = document.createElement('span');
+    info.textContent = fmt(seconds) + '  ·  ' + (blob.size / 1024 < 1024 ? Math.round(blob.size / 1024) + ' KB' : (blob.size / 1048576).toFixed(1) + ' MB');
+    meta.appendChild(strong); meta.appendChild(info);
+
+    var actions = document.createElement('div'); actions.className = 'actions';
+    var dl = document.createElement('a'); dl.className = 'btn'; dl.textContent = 'Download';
+    dl.href = url; dl.download = 'recorder-25th-oct-' + count + '.' + extFor(mime);
+    var del = document.createElement('button'); del.type = 'button'; del.className = 'btn'; del.textContent = 'Delete';
+    del.addEventListener('click', function () {
+      URL.revokeObjectURL(url); li.remove();
+      if (!listEl.children.length) emptyEl.hidden = false;
+      setStatus('Recording deleted.');
+    });
+    actions.appendChild(dl); actions.appendChild(del);
+
+    var audio = document.createElement('audio'); audio.controls = true; audio.preload = 'metadata'; audio.src = url;
+
+    li.appendChild(meta); li.appendChild(actions); li.appendChild(audio);
+    listEl.insertBefore(li, listEl.firstChild);
+    emptyEl.hidden = true;
+    timerEl.textContent = '00:00';
+    setStatus('Saved as ' + name + '. Record another or download it below.');
+  }
+
+  recBtn.addEventListener('click', function () {
+    if (recBtn.getAttribute('aria-pressed') === 'true') stop(); else start();
+  });
+
+  /* ---------- contact form (opens the visitor's email app) ---------- */
+  var CONTACT_EMAIL = 'hello@example.com'; // change this to your real address
+  var form = document.getElementById('contactForm');
+  var note = document.getElementById('formNote');
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var name = document.getElementById('cName').value.trim();
+    var email = document.getElementById('cEmail').value.trim();
+    var topic = document.getElementById('cTopic').value;
+    var msg = document.getElementById('cMsg').value.trim();
+    if (!name || !email || !msg || email.indexOf('@') < 1) {
+      note.textContent = 'Please fill in your name, a valid email and a message.';
+      return;
+    }
+    var body = msg + '\n\nFrom: ' + name + ' (' + email + ')';
+    window.location.href = 'mailto:' + CONTACT_EMAIL +
+      '?subject=' + encodeURIComponent('Recorder 25th Oct: ' + topic) +
+      '&body=' + encodeURIComponent(body);
+    note.textContent = 'Opening your email app. If nothing happens, write to ' + CONTACT_EMAIL + '.';
+  });
+})();
+</script>
+</body>
+</html>
